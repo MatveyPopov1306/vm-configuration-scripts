@@ -8,6 +8,7 @@ BLUE='\e[34m'
 RESET='\e[0m'
 
 #Error codes for echo -e
+INFO="${BLUE}[INFO]${RESET}"
 OK="${GREEN}[OK]${RESET}"
 ERROR="${RED}[ERROR]${RESET}"
 WARNING="${YELLOW}[WARNING]${RESET}"
@@ -55,6 +56,20 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+#finction accepts name of programs as arguments and checks if they are installed, if not it installs them, if they are installed it updates them
+install_or_update() {
+    sudo apt-get update -qq
+    for pkg in "$@"; do
+        if dpkg -s "$pkg" >/dev/null 2>&1; then
+            echo "$INFO $pkg уже установлен. Проверка обновлений..."
+            sudo apt-get install --only-upgrade -y "$pkg"
+        else
+            echo "$INFO $pkg не найден. Выполняется установка..."
+            sudo apt-get install -y "$pkg"
+        fi
+    done
+}
+
 update_system() {
 
 	#Check if update is skipping
@@ -67,8 +82,17 @@ update_system() {
 	sudo apt update
 	sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
 	clear
-	echo -e "$OK System was sucsessfully updated"
-	
+	echo "$OK System was sucsessfully updated"
+
+}	
+
+apps_install() {
+    
+    #Install apps
+    install_or_update git curl wget ufw fail2ban
+
+    echo "$OK Apps were sucsessfully installed"
+
 }
 
 main(){
@@ -77,6 +101,8 @@ main(){
 	clear 
 
     update_system
+    apps_install
+
 }
 
 main
