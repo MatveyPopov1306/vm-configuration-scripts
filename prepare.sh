@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+#Clear console before all actions
+clear 
+
 #Shortcuts of colors
 RED='\e[31m'
 GREEN='\e[32m'
@@ -13,8 +16,8 @@ OK="${GREEN}[OK]${RESET}"
 ERROR="${RED}[ERROR]${RESET}"
 WARNING="${YELLOW}[WARNING]${RESET}"
 
-USERNAME="admin"
-PASSWORD='password'
+USERNAME=""
+PASSWORD=''
 SSHPORT="10122"
 SSH_PUBLIC_KEY=""
 
@@ -71,15 +74,14 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-#finction accepts name of programs as arguments and checks if they are installed, if not it installs them, if they are installed it updates them
 install_or_update() {
-    sudo apt-get update -qq
+    sudo apt-get update -qq > /dev/null 2>&1
     for pkg in "$@"; do
         if dpkg -s "$pkg" >/dev/null 2>&1; then
-            echo -e "$INFO $pkg уже установлен. Проверка обновлений..."
-            sudo apt-get install --only-upgrade -y "$pkg"
+            echo -e "$INFO $pkg already installed. Checking updates..."
+            sudo apt-get install --only-upgrade -y "$pkg" > /dev/null 2>&1
         else
-            echo -e "$INFO $pkg не найден. Выполняется установка..."
+            echo -e "$WARNING $pkg not found. Installing..."
             sudo apt-get install -y "$pkg"
         fi
     done
@@ -117,14 +119,33 @@ apps_install() {
 
 }
 
+create_user() {
+
+    # Check if there are user's prvided paramets
+    if [ -z "$USERNAME" ]; then
+        echo -e "$WARNING Username pareametr was not provided. Skip sudo user creation"
+        return 0
+    fi
+
+	#Check if user already exist
+	if id "$USERNAME" &>/dev/null; then
+		echo -e "$WARNING User $USERNAME already exists, skipping."
+		return 0
+	fi
+	
+	#Create a user
+	sudo useradd -m -s /bin/bash "$USERNAME"
+	echo "$USERNAME:$PASSWORD" | sudo chpasswd
+	sudo usermod -aG sudo "$USERNAME"
+	echo -e "$OK User $USERNAME was successfully created."
+	
+}
+
 main(){
-    
-	#Clear console before all actions
-	clear 
 
     update_system
     apps_install
-
+    create_user
 }
 
 main

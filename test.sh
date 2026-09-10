@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+clear
+
 #Shortcuts of colors
 RED='\e[31m'
 GREEN='\e[32m'
@@ -17,6 +19,8 @@ WARNING="${YELLOW}[WARNING]${RESET}"
 export DEBIAN_FRONTEND=noninteractive
 
 # Обновляем кэш и пакеты (-yqq для максимальной тишины и авто-согласия)
-apt-get update -qq
-apt-get upgrade -yqq
+#apt-get update -qq
+#apt-get upgrade -yqq
+
+echo "Test Debug"
 

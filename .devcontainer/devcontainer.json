@@ -8,7 +8,9 @@
     "vscode": {
       "extensions": [
         "ms-vscode.bash-debug",
-        "timonwong.shellcheck"
+        "timonwong.shellcheck",
+        "mads-hartmann.bash-ide-vscode",
+        "rogalmic.bash-debug"
       ]
     }
   },
