@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+clear
+
 # Clear console before all actions
 # Shortcuts of colors
 RED='\e[31m'
@@ -99,11 +101,6 @@ manage_config() {
     # This prevents false matches on descriptive text like "# PasswordAuthentication. Depending..."
     local regex="^[[:space:]]*#?[[:space:]]*${key}([[:space:]]+.*)?$"
 
-    if [[ ! -f "$file" ]]; then
-        echo "Error: File '$file' does not exist."
-        return 1
-    fi
-
     if [[ -z "$val" ]]; then
         # -m 1 ensures only the first valid match is output
         grep -m 1 -E "$regex" "$file" || echo "Parameter '$key' not found."
@@ -115,7 +112,7 @@ manage_config() {
         else
             echo "${key} ${val}" | sudo tee -a "$file" > /dev/null
         fi
-        echo "Set: ${key} ${val}"
+        echo -e "$OK Set: ${key} ${val}"
     fi
 }
 
@@ -325,7 +322,16 @@ sshd_config_configuration(){
 
     # Hardening configurations
     manage_config "$sshd_config_path" "PasswordAuthentication" "yes"
-    #manage_config "$sshd_config_path" "PasswordAuthentication" "yes"
+    manage_config "$sshd_config_path" "PermitRootLogin" "no"
+    manage_config "$sshd_config_path" "PermitEmptyPasswords" "no"
+    manage_config "$sshd_config_path" "X11Forwarding" "no"
+
+    if ! [ -z "$USERNAME" ]; then
+        manage_config "$sshd_config_path" "AllowUsers" "$USERNAME"
+    fi
+
+    manage_config "$sshd_config_path" "MaxAuthTries" "3"
+    manage_config "$sshd_config_path" "LoginGraceTime" "30"
 
 }
 
@@ -338,7 +344,7 @@ main(){
     setup_authorized_keys
     change_default_ssh_port
     sshd_config_configuration
-    
+
 }
 
 main
