@@ -321,6 +321,7 @@ change_default_ssh_port() {
 sshd_config_configuration(){
 
     # Hardening configurations
+    change_default_ssh_port
     manage_config "$sshd_config_path" "PasswordAuthentication" "yes"
     manage_config "$sshd_config_path" "PermitRootLogin" "no"
     manage_config "$sshd_config_path" "PermitEmptyPasswords" "no"
@@ -337,7 +338,6 @@ sshd_config_configuration(){
 
 ufw_config_configuration() {
 
-    install_or_update ufw
     check_file_exists "$UFW_RULES_FILE" || exit 0
 
 	#Reset ufw setting before setting up
@@ -388,6 +388,38 @@ ufw_config_configuration() {
     return 0
 }
 
+fail2ban_config_configuration() {
+    
+	local f2b_conf_path="/etc/fail2ban/jail.conf"
+	local f2b_localconf_path="/etc/fail2ban/jail.local"
+
+	if [ "$SKIP_FAIL2BAN_SETUP" = true ]; then
+		echo -e "$WARNING Fail2ban setup was skipped by flag --skip-fail2ban-setup"
+		return 0
+	fi
+
+    # Check if fail2ban is already configured
+	if [ -e $f2b_conf_path ]; then
+		if [ -e $f2b_localconf_path ]; then
+			echo -e "$WARNING File $f2b_localconf_path is already exist."
+		fi
+	else
+		echo -e "$ERROR No config file $f2b_conf_path. Abort installation."
+		exit 1
+	fi
+	
+	# Make a local conf file
+	sudo touch $f2b_localconf_path
+	
+	# Writing custom configuration of fail2ban
+    printf '%s\n' '[sshd]' 'enabled = true' 'maxretry = 3' 'findtime = 10m' 'bantime = 3h' > /etc/fail2ban/jail.local
+	
+	sudo systemctl enable --now fail2ban
+	sudo systemctl restart fail2ban
+	
+	echo -e "$OK Fail2ban was configured and enabled (custom configuration file is $f2b_localconf_path)"
+}
+
 main(){
 
     update_system
@@ -395,9 +427,10 @@ main(){
 
     create_user
     setup_authorized_keys
-    change_default_ssh_port
     sshd_config_configuration
     ufw_config_configuration
+    fail2ban_config_configuration
+
 }
 
 main

@@ -13,7 +13,8 @@
             // "--restore-sshd-config",
             // "--sshport", "10122",
             // "--username", "admin", 
-            // "--userpassword", "admin", 
+            // "--userpassword", "admin",
+            // "--skip-fail2ban-setup",
             "--skip-ssh-key-setup",
             // "--ssh-publickey", "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIAoLY96yKHQFWdbhnfyGNkKJv17fLfSrjjdt8j8ydxp matvey@HOME"
             ],
