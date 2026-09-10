@@ -1,16 +1,14 @@
 #!/usr/bin/env bash
 
-#Clear console before all actions
-clear 
-
-#Shortcuts of colors
+# Clear console before all actions
+# Shortcuts of colors
 RED='\e[31m'
 GREEN='\e[32m'
 YELLOW='\e[33m'
 BLUE='\e[34m'
 RESET='\e[0m'
 
-#Error codes for echo -e
+# Error codes for echo -e
 INFO="${BLUE}[INFO]${RESET}"
 OK="${GREEN}[OK]${RESET}"
 ERROR="${RED}[ERROR]${RESET}"
@@ -89,9 +87,9 @@ install_or_update() {
 
 update_system() {
 
-	#Check if update is skipping
+	# Check if update is skipping
 	if [ "$SKIPUPDATE" = true ]; then
-		echo -e "$WARNING Skipped update becatuse of parameter --skip-update: $SKIPUPDATE"
+		echo -e "$WARNING Skipped system update because of $SKIPUPDATE parameter --skip-update"
 		return 0
 	fi
 	
@@ -103,8 +101,8 @@ update_system() {
     apt-get upgrade -yqq
 
 	# Update the System
-	#sudo apt update
-	#sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
+	# sudo apt update
+	# sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
 	clear
 	echo -e "$OK System was sucsessfully updated"
 
@@ -112,7 +110,13 @@ update_system() {
 
 apps_install() {
     
-    #Install apps
+    # Check if update is skipping
+	if [ "$SKIPUPDATE" = true ]; then
+		echo -e "$WARNING Skipped apps installation because of $SKIPUPDATE parameter"
+		return 0
+	fi
+
+    # Install apps
     install_or_update git curl wget ufw fail2ban
 
     echo -e "$OK Apps were sucsessfully installed"
@@ -127,17 +131,92 @@ create_user() {
         return 0
     fi
 
-	#Check if user already exist
+	# Check if user already exist
 	if id "$USERNAME" &>/dev/null; then
-		echo -e "$WARNING User $USERNAME already exists, skipping."
-		return 0
+
+        # Check if user has an admin privileges
+        if id -nG "admin" | grep -qw "sudo"; then
+            echo -e "$INFO User $USERNAME already exists with right privileges, skipping."
+            return 0
+        fi
+
+		sudo usermod -aG sudo "$USERNAME"
 	fi
 	
-	#Create a user
+	# Create a user with password and sudo
 	sudo useradd -m -s /bin/bash "$USERNAME"
 	echo "$USERNAME:$PASSWORD" | sudo chpasswd
 	sudo usermod -aG sudo "$USERNAME"
-	echo -e "$OK User $USERNAME was successfully created."
+	echo -e "$OK User $USERNAME was successfully created with sudo."
+	
+}
+
+setup_authorized_keys() {
+
+	local user="$USERNAME"
+    local ssh_dir="/home/$user/.ssh"
+    local auth_keys="$ssh_dir/authorized_keys"
+
+    # Checking arguments conflict --skip-ssh-key-setup and --ssh-publickey at the same time
+    if [ "$SKIP_SSH_KEY_SETUP" = true ] && \
+       [ ! -z "$SSH_PUBLIC_KEY" ]; then
+        echo -e "$ERROR You should not use --skip-ssh-key-setup and --ssh-publickey arguements at the same time"
+        return 0;
+    fi
+
+	#Check if ssh-key setup is skipping
+	if [ "$SKIP_SSH_KEY_SETUP" = true ]; then
+		echo -e "$WARNING SSH-key setup was skipped."
+		return 0
+	fi
+
+	#Check if authorized_keys file is already exist
+    if [[ -f "$auth_keys" ]] && \
+       [[ "$(stat -c %a "$auth_keys")" == "600" ]] && \
+       [[ "$(stat -c %a "$ssh_dir")" == "700" ]]; then
+		#sudo nano "$auth_keys"
+        echo -e "$OK Authorized_keys already exists for $USERNAME with correct permissions."
+    else
+        #Creating an authorized_keys file
+	    sudo mkdir -p "$ssh_dir"
+	    sudo touch "$auth_keys"
+        sudo chmod 700 "$ssh_dir"
+        sudo chmod 600 "$auth_keys"
+        sudo chown -R "$user:$user" "$ssh_dir"
+    fi
+
+    # if auth_keys file isn't empty and user provides ssh-key argument -
+    # resolving manualy thourght nano or compare ssh keys automatically
+    if [[ -s "$auth_keys" ]] && \
+       [[ ! -z "$SSH_PUBLIC_KEY" ]]; then
+
+        # if that ssh is already in auth_keys file
+        file_key=$(< "$auth_keys" xargs)
+        if [[ "$file_key" == "$SSH_PUBLIC_KEY" ]]; then
+            echo -e "$OK Your ssh key is already in $auth_keys"
+            return 0
+        fi
+
+        sudo nano "$auth_keys"
+    fi
+
+    # Checks if there are any ssh-key look like string
+    if grep -qE '^[[:space:]]*(ssh-|ecdsa-|sk-|rsa-)' "$auth_keys"; then
+        echo -e "$OK Your ssh key is already in $auth_keys"
+        return 0
+    fi
+
+    # if auth_keys file is empty fill ssh key automatic or manually
+    if [[ ! -s "$auth_keys" ]]; then
+        if [ ! -z "$SSH_PUBLIC_KEY" ]; then
+		    echo "$SSH_PUBLIC_KEY" >> "$auth_keys"
+	    else
+            echo "# You haven't provided a ssh key throught arguemtns. You can paste ssh key below" >> "$auth_keys"
+            sudo nano "$auth_keys"
+	    fi
+    fi
+
+	echo -e "$OK Authorized_keys was successfully created for $USERNAME with correct permissions."
 	
 }
 
@@ -145,7 +224,9 @@ main(){
 
     update_system
     apps_install
+
     create_user
+    setup_authorized_keys
 }
 
 main
