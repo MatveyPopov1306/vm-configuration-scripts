@@ -11,7 +11,7 @@
             "args": [
             "--skip-update",
             // "--restore-sshd-config",
-            // "--sshport", "22",
+            // "--sshport", "10122",
             // "--username", "admin", 
             // "--userpassword", "admin", 
             "--skip-ssh-key-setup",

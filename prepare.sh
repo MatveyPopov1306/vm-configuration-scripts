@@ -77,6 +77,48 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+check_file_exists() {
+    local file="$1"
+    
+    if ! [[ -f "$file" ]]; then
+        echo -e "$ERROR File '$file' does not exist."
+        return 1
+    fi
+
+    return 0
+}
+
+manage_config() {
+    local file="$1"
+    local key="$2"
+    local val="$3"
+
+    check_file_exists "$file" || return 0
+
+    # Regex explicitly requires a space, tab, or end of line immediately after the key.
+    # This prevents false matches on descriptive text like "# PasswordAuthentication. Depending..."
+    local regex="^[[:space:]]*#?[[:space:]]*${key}([[:space:]]+.*)?$"
+
+    if [[ ! -f "$file" ]]; then
+        echo "Error: File '$file' does not exist."
+        return 1
+    fi
+
+    if [[ -z "$val" ]]; then
+        # -m 1 ensures only the first valid match is output
+        grep -m 1 -E "$regex" "$file" || echo "Parameter '$key' not found."
+    else
+        if grep -qE "$regex" "$file"; then
+            # Replace only the first valid match and bypass the rest of the file.
+            # Using '@' as the sed delimiter safely allows forward slashes ('/') in $val.
+            sudo sed -i -E "/${regex}/{s@.*@${key} ${val}@; :a; n; ba;}" "$file"
+        else
+            echo "${key} ${val}" | sudo tee -a "$file" > /dev/null
+        fi
+        echo "Set: ${key} ${val}"
+    fi
+}
+
 install_or_update() {
     sudo apt-get update -qq > /dev/null 2>&1
     for pkg in "$@"; do
@@ -231,6 +273,12 @@ change_default_ssh_port() {
 	local sshd_cfg="sshd_config"
 	local ssh_path="/etc/ssh/"
 
+    # Resotre sshd_config file if it doesn't exist. But sshd_config_backup exists
+    if [[ ! -f "$ssh_path$sshd_cfg" ]] && [[ -f "$ssh_path$sshd_cfg_backup" ]]; then
+        echo -e "$WARNING File $sshd_cfg does not exist. Restoring from backup..."
+        cp -p "$ssh_path$sshd_cfg_backup" "$ssh_path$sshd_cfg"
+    fi
+
     # Check if ssh-port arg was lived untouchable - do not change sshd_config
     if [[ -z "$SSHPORT" ]]; then 
         echo -e "$WARNING Custom ssh port configuration was skipped. You haven't provide arguments"
@@ -270,15 +318,16 @@ change_default_ssh_port() {
     fi
 
 	# Change default OpenSSH port to custom
-	if [ -e "$sshd_config_path" ]; then
-		sed -i "s|^#\?Port .*$|Port ${SSHPORT}|" "$sshd_config_path"
-		echo -e "$OK Default OpenSSH port was changed to $SSHPORT"
-	else
-		echo -e "$ERROR There is no file $sshd_config_path."
-		exit 1
-	fi
+    manage_config "$sshd_config_path" "Port" "$SSHPORT"
 }
 
+sshd_config_configuration(){
+
+    # Hardening configurations
+    manage_config "$sshd_config_path" "PasswordAuthentication" "yes"
+    #manage_config "$sshd_config_path" "PasswordAuthentication" "yes"
+
+}
 
 main(){
 
@@ -288,6 +337,7 @@ main(){
     create_user
     setup_authorized_keys
     change_default_ssh_port
+    sshd_config_configuration
     
 }
 
