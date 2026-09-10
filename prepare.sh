@@ -323,7 +323,12 @@ sshd_config_configuration(){
     # Hardening configurations
     change_default_ssh_port
     manage_config "$sshd_config_path" "PasswordAuthentication" "yes"
-    manage_config "$sshd_config_path" "PermitRootLogin" "no"
+    manage_config "/etc/ssh/sshd_config.d/50-cloud-init.conf" "PasswordAuthentication" "yes"
+
+    if [ "$ALLOW_ROOT_LOGIN" == true ]; then
+        manage_config "$sshd_config_path" "PermitRootLogin" "no"
+    fi
+
     manage_config "$sshd_config_path" "PermitEmptyPasswords" "no"
     manage_config "$sshd_config_path" "X11Forwarding" "no"
 
@@ -333,6 +338,11 @@ sshd_config_configuration(){
 
     manage_config "$sshd_config_path" "MaxAuthTries" "3"
     manage_config "$sshd_config_path" "LoginGraceTime" "30"
+
+	#Reload daemon to activate new SSH port and other parametrs
+	sudo sshd -t
+	sudo systemctl daemon-reload && sudo systemctl restart ssh
+	echo -e "$OK sshd_config file was validated and applied"
 
 }
 
