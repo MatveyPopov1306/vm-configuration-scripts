@@ -9,10 +9,12 @@
             "name": "Bash-Debug (simplest configuration)",
             "program": "${file}",
             "args": [
-            "--skip-update", 
-            "--username", "admin", 
-            "--userpassword", "admin", 
-            // "--skip-ssh-key-setup",
+            "--skip-update",
+            // "--restore-sshd-config",
+            // "--sshport", "22",
+            // "--username", "admin", 
+            // "--userpassword", "admin", 
+            "--skip-ssh-key-setup",
             // "--ssh-publickey", "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIAoLY96yKHQFWdbhnfyGNkKJv17fLfSrjjdt8j8ydxp matvey@HOME"
             ],
             "terminalKind": "integrated",

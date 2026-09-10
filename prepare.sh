@@ -16,7 +16,7 @@ WARNING="${YELLOW}[WARNING]${RESET}"
 
 USERNAME=""
 PASSWORD=''
-SSHPORT="10122"
+SSHPORT=""
 SSH_PUBLIC_KEY=""
 
 # installation flags
@@ -24,6 +24,7 @@ ALLOW_ROOT_LOGIN=false
 SKIPUPDATE=false
 SKIP_SSH_KEY_SETUP=false
 SKIP_FAIL2BAN_SETUP=false
+RESTORE_SSHD_CONFIG=false
 
 # File paths
 UFW_RULES_FILE="/etc/ufw/before.rules"
@@ -50,6 +51,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --skip-update)
             SKIPUPDATE=true
+            shift
+            ;;
+        --restore-sshd-config)
+            RESTORE_SSHD_CONFIG=true
             shift
             ;;
         --skip-ssh-key-setup)
@@ -112,7 +117,7 @@ apps_install() {
     
     # Check if update is skipping
 	if [ "$SKIPUPDATE" = true ]; then
-		echo -e "$WARNING Skipped apps installation because of $SKIPUPDATE parameter"
+		echo -e "$WARNING Skipped apps installation because of $SKIPUPDATE parameter --skip-update"
 		return 0
 	fi
 
@@ -220,6 +225,61 @@ setup_authorized_keys() {
 	
 }
 
+change_default_ssh_port() {
+
+	local sshd_cfg_backup="sshd_config_backup"
+	local sshd_cfg="sshd_config"
+	local ssh_path="/etc/ssh/"
+
+    # Check if ssh-port arg was lived untouchable - do not change sshd_config
+    if [[ -z "$SSHPORT" ]]; then 
+        echo -e "$WARNING Custom ssh port configuration was skipped. You haven't provide arguments"
+        return 0
+    fi
+	
+    # Check if SSHPORT contains a valid value
+    if ! [[ "$SSHPORT" =~ ^[0-9]+$ ]] || (( SSHPORT <= 0 || SSHPORT > 65535 )); then
+        echo -e "$ERROR Provided port number: $SSHPORT is not allowed. Skiping ssh port edit..."
+        return
+    fi
+
+	# Check is there are any backup version of sshd_config
+	if [ -e "$ssh_path$sshd_cfg_backup" ]; then
+		echo -e "$OK A backup copy of sshd_config is already exists with name: $ssh_path$sshd_cfg_backup"
+	else
+        cp -p "$ssh_path$sshd_cfg" "$ssh_path$sshd_cfg_backup"
+		#cp -p /etc/ssh/sshd_config /etc/ssh/sshd_config_backup
+		echo -e "$OK A backup copy of sshd_config was made with name: $ssh_path$sshd_cfg_backup"
+	fi
+
+    # Restore sshd_config file from backup if flag --restore-sshd-config
+    if [ "$RESTORE_SSHD_CONFIG" == true ]; then
+        if [ -e "$ssh_path$sshd_cfg_backup" ]; then
+            echo -e "$WARNING Restoring $sshd_cfg file..."
+            rm -rf "$ssh_path$sshd_cfg"
+            cp -p "$ssh_path$sshd_cfg_backup" "$ssh_path$sshd_cfg"
+        else
+            echo -e "$ERROR There is no $sshd_cfg_backup file."
+        fi
+    fi
+
+    # Check if user provides default 22 port for OpenSSH
+    if [[ $SSHPORT == 22 ]]; then
+        echo -e "$WARNING Custom ssh port configuration was skipped. You provided default $SSHPORT port in arguments"
+        return 0
+    fi
+
+	# Change default OpenSSH port to custom
+	if [ -e "$sshd_config_path" ]; then
+		sed -i "s|^#\?Port .*$|Port ${SSHPORT}|" "$sshd_config_path"
+		echo -e "$OK Default OpenSSH port was changed to $SSHPORT"
+	else
+		echo -e "$ERROR There is no file $sshd_config_path."
+		exit 1
+	fi
+}
+
+
 main(){
 
     update_system
@@ -227,6 +287,8 @@ main(){
 
     create_user
     setup_authorized_keys
+    change_default_ssh_port
+    
 }
 
 main
