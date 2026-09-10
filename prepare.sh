@@ -50,7 +50,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         *)
             echo "An unknown parameter was passed: $1"
-            echo "$ERROR installation was cancelled"
+            echo -e "$ERROR installation was cancelled"
             exit 1
             ;;
     esac
@@ -61,10 +61,10 @@ install_or_update() {
     sudo apt-get update -qq
     for pkg in "$@"; do
         if dpkg -s "$pkg" >/dev/null 2>&1; then
-            echo "$INFO $pkg уже установлен. Проверка обновлений..."
+            echo -e "$INFO $pkg уже установлен. Проверка обновлений..."
             sudo apt-get install --only-upgrade -y "$pkg"
         else
-            echo "$INFO $pkg не найден. Выполняется установка..."
+            echo -e "$INFO $pkg не найден. Выполняется установка..."
             sudo apt-get install -y "$pkg"
         fi
     done
@@ -82,7 +82,7 @@ update_system() {
 	sudo apt update
 	sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
 	clear
-	echo "$OK System was sucsessfully updated"
+	echo -e "$OK System was sucsessfully updated"
 
 }	
 
@@ -91,7 +91,7 @@ apps_install() {
     #Install apps
     install_or_update git curl wget ufw fail2ban
 
-    echo "$OK Apps were sucsessfully installed"
+    echo -e "$OK Apps were sucsessfully installed"
 
 }
 
