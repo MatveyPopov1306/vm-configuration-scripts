@@ -335,6 +335,59 @@ sshd_config_configuration(){
 
 }
 
+ufw_config_configuration() {
+
+    install_or_update ufw
+    check_file_exists "$UFW_RULES_FILE" || exit 0
+
+	#Reset ufw setting before setting up
+	sudo ufw --force reset > /dev/null 2>&1
+
+	# Change ACCEPT to DROP in icmp code for INPUT
+	sed -i 's/-A ufw-before-input -p icmp --icmp-type destination-unreachable -j ACCEPT/-A ufw-before-input -p icmp --icmp-type destination-unreachable -j DROP/' "$UFW_RULES_FILE"
+	sed -i 's/-A ufw-before-input -p icmp --icmp-type time-exceeded -j ACCEPT/-A ufw-before-input -p icmp --icmp-type time-exceeded -j DROP/' "$UFW_RULES_FILE"
+	sed -i 's/-A ufw-before-input -p icmp --icmp-type parameter-problem -j ACCEPT/-A ufw-before-input -p icmp --icmp-type parameter-problem -j DROP/' "$UFW_RULES_FILE"
+	sed -i 's/-A ufw-before-input -p icmp --icmp-type echo-request -j ACCEPT/-A ufw-before-input -p icmp --icmp-type echo-request -j DROP/' "$UFW_RULES_FILE"
+
+	#Append a new string to rules
+	sed -i '/-A ufw-before-input -p icmp --icmp-type echo-request -j DROP/a -A ufw-before-input -p icmp --icmp-type source-quench -j DROP' "$UFW_RULES_FILE"
+
+	# Change ACCEPT to DROP in icmp code for FORWARD
+	sed -i 's/-A ufw-before-forward -p icmp --icmp-type destination-unreachable -j ACCEPT/-A ufw-before-forward -p icmp --icmp-type destination-unreachable -j DROP/' "$UFW_RULES_FILE"
+	sed -i 's/-A ufw-before-forward -p icmp --icmp-type time-exceeded -j ACCEPT/-A ufw-before-forward -p icmp --icmp-type time-exceeded -j DROP/' "$UFW_RULES_FILE"
+	sed -i 's/-A ufw-before-forward -p icmp --icmp-type parameter-problem -j ACCEPT/-A ufw-before-forward -p icmp --icmp-type parameter-problem -j DROP/' "$UFW_RULES_FILE"
+	sed -i 's/-A ufw-before-forward -p icmp --icmp-type echo-request -j ACCEPT/-A ufw-before-forward -p icmp --icmp-type echo-request -j DROP/' "$UFW_RULES_FILE"
+
+	echo -e "$OK Server ping was disabled"
+
+    #Setting up an ufw
+	sudo ufw default deny incoming > /dev/null 2>&1
+	sudo ufw default allow outgoing > /dev/null 2>&1
+
+	sudo ufw allow http > /dev/null 2>&1
+	sudo ufw allow https > /dev/null 2>&1
+
+    if [[ -z "$SSHPORT" ]] || [[ "$SSHPORT" == "22" ]]; then
+        sudo ufw allow OpenSSH > /dev/null 2>&1
+    fi 
+
+    # Read the current Port value from sshd_config into a variable using our manage_config function
+    current_ssh_port=$(manage_config "/etc/ssh/sshd_config" "Port")
+
+    # Extract just the numeric value (ignoring the parameter name if present)
+    current_ssh_port=$(echo "$current_ssh_port" | awk '{print $NF}')
+
+    #echo "Current SSH Port: $current_ssh_port"
+
+	sudo ufw allow "$current_ssh_port" > /dev/null 2>&1
+
+	sudo ufw --force enable > /dev/null 2>&1
+
+	echo -e "$OK UFW was configured and enabled"
+
+    return 0
+}
+
 main(){
 
     update_system
@@ -344,7 +397,7 @@ main(){
     setup_authorized_keys
     change_default_ssh_port
     sshd_config_configuration
-
+    ufw_config_configuration
 }
 
 main
