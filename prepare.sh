@@ -13,6 +13,21 @@ OK="${GREEN}[OK]${RESET}"
 ERROR="${RED}[ERROR]${RESET}"
 WARNING="${YELLOW}[WARNING]${RESET}"
 
+USERNAME="admin"
+PASSWORD='password'
+SSHPORT="10122"
+SSH_PUBLIC_KEY=""
+
+# installation flags
+ALLOW_ROOT_LOGIN=false
+SKIPUPDATE=false
+SKIP_SSH_KEY_SETUP=false
+SKIP_FAIL2BAN_SETUP=false
+
+# File paths
+UFW_RULES_FILE="/etc/ufw/before.rules"
+sshd_config_path="/etc/ssh/sshd_config"
+
 # Parsing cycle
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -78,9 +93,16 @@ update_system() {
 		return 0
 	fi
 	
-	#Update the System
-	sudo apt update
-	sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
+    # Отключаем интерактивные запросы для полной автоматизации
+    export DEBIAN_FRONTEND=noninteractive
+
+    # Обновляем кэш и пакеты (-yqq для максимальной тишины и авто-согласия)
+    apt-get update -qq
+    apt-get upgrade -yqq
+
+	# Update the System
+	#sudo apt update
+	#sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
 	clear
 	echo -e "$OK System was sucsessfully updated"
 

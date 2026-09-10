@@ -7,9 +7,13 @@
         
         {
             "type": "bashdb",
+            "trace": true,
             "request": "launch",
             "name": "Bash-Debug (simplest configuration)",
-            "program": "${file}"
+            "program": "${file}",
+            "args": [
+            "--skip-update"
+            ]
         }
     ]
 }

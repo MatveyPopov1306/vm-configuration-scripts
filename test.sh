@@ -13,8 +13,10 @@ OK="${GREEN}[OK]${RESET}"
 ERROR="${RED}[ERROR]${RESET}"
 WARNING="${YELLOW}[WARNING]${RESET}"
 
+# Отключаем интерактивные запросы для полной автоматизации
+export DEBIAN_FRONTEND=noninteractive
 
-echo -e "$ERROR Test"
-
-sudo apt update && sudo apt upgrade -y
+# Обновляем кэш и пакеты (-yqq для максимальной тишины и авто-согласия)
+apt-get update -qq
+apt-get upgrade -yqq
 
