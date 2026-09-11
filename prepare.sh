@@ -449,7 +449,7 @@ main(){
     setup_authorized_keys
     sshd_config_configuration
 
-    # applying_sshd_config
+    applying_sshd_config
 
     ufw_config_configuration
     fail2ban_config_configuration
