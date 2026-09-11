@@ -392,23 +392,20 @@ ufw_config_configuration() {
 
     if [[ -z "$SSHPORT" ]] || [[ "$SSHPORT" == "22" ]]; then
         sudo ufw allow OpenSSH > /dev/null 2>&1
+    else
+        # Read the current Port value from sshd_config into a variable using our manage_config function
+        current_ssh_port=$(manage_config "/etc/ssh/sshd_config" "Port")
+
+        # Extract just the numeric value (ignoring the parameter name if present)
+        current_ssh_port=$(echo "$current_ssh_port" | awk '{print $NF}')
+
+        #echo "Current SSH Port: $current_ssh_port"
+        sudo ufw allow "$current_ssh_port" > /dev/null 2>&1
     fi 
 
-    # Read the current Port value from sshd_config into a variable using our manage_config function
-    current_ssh_port=$(manage_config "/etc/ssh/sshd_config" "Port")
-
-    # Extract just the numeric value (ignoring the parameter name if present)
-    current_ssh_port=$(echo "$current_ssh_port" | awk '{print $NF}')
-
-    #echo "Current SSH Port: $current_ssh_port"
-
-	sudo ufw allow "$current_ssh_port" > /dev/null 2>&1
-
 	sudo ufw --force enable > /dev/null 2>&1
-
 	echo -e "$OK UFW was configured and enabled"
 
-    return 0
 }
 
 fail2ban_config_configuration() {
@@ -437,8 +434,8 @@ fail2ban_config_configuration() {
 	# Writing custom configuration of fail2ban
     printf '%s\n' '[sshd]' 'enabled = true' 'maxretry = 3' 'findtime = 10m' 'bantime = 3h' > /etc/fail2ban/jail.local
 	
-	sudo systemctl enable --now fail2ban
-	sudo systemctl restart fail2ban
+	sudo systemctl enable --now fail2ban > /dev/null 2>&1
+	sudo systemctl restart fail2ban > /dev/null 2>&1
 	
 	echo -e "$OK Fail2ban was configured and enabled (custom configuration file is $f2b_localconf_path)"
 }
