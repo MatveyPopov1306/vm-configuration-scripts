@@ -1,459 +1,323 @@
 #!/usr/bin/env bash
-
 clear
 
-# Clear console before all actions
-# Shortcuts of colors
-RED='\e[31m'
-GREEN='\e[32m'
-YELLOW='\e[33m'
-BLUE='\e[34m'
-RESET='\e[0m'
+# --- Константы и цвета ---
+readonly RED='\e[31m' GREEN='\e[32m' YELLOW='\e[33m' BLUE='\e[34m' RESET='\e[0m'
+readonly UFW_RULES_FILE="/etc/ufw/before.rules"
+readonly SSHD_CONFIG_PATH="/etc/ssh/sshd_config"
+readonly SSHD_CLOUD_INIT_PATH="/etc/ssh/sshd_config.d/50-cloud-init.conf"
 
-# Error codes for echo -e
-INFO="${BLUE}[INFO]${RESET}"
-OK="${GREEN}[OK]${RESET}"
-ERROR="${RED}[ERROR]${RESET}"
-WARNING="${YELLOW}[WARNING]${RESET}"
-
+# --- Глобальные переменные ---
 USERNAME=""
-PASSWORD=''
+PASSWORD=""
 SSHPORT=""
 SSH_PUBLIC_KEY=""
 
-# installation flags
 ALLOW_ROOT_LOGIN=false
 SKIPUPDATE=false
 SKIP_SSH_KEY_SETUP=false
 SKIP_FAIL2BAN_SETUP=false
 RESTORE_SSHD_CONFIG=false
 
-# File paths
-UFW_RULES_FILE="/etc/ufw/before.rules"
-sshd_config_path="/etc/ssh/sshd_config"
-
-# Parsing cyclemain
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --username)
-            USERNAME="$2"
-            shift 2
-            ;;
-        --userpassword)
-            PASSWORD="$2"
-            shift 2
-            ;;
-        --sshport)
-            SSHPORT="$2"
-            shift 2
-            ;;
-        --ssh-publickey)
-            SSH_PUBLIC_KEY="$2"
-            shift 2
-            ;;
-        --skip-update)
-            SKIPUPDATE=true
-            shift
-            ;;
-        --restore-sshd-config)
-            RESTORE_SSHD_CONFIG=true
-            shift
-            ;;
-        --skip-ssh-key-setup)
-            SKIP_SSH_KEY_SETUP=true
-            shift
-            ;;
-        --skip-fail2ban-setup)
-            SKIP_FAIL2BAN_SETUP=true
-            shift
-            ;;
-        --allow-root-login)
-            ALLOW_ROOT_LOGIN=true
-            shift
-            ;;
-        *)
-            echo "An unknown parameter was passed: $1"
-            echo -e "$ERROR installation was cancelled"
-            exit 1
-            ;;
-    esac
-done
+# --- Вспомогательные функции ---
+log_info() { echo -e "${BLUE}[INFO]${RESET} $1"; }
+log_ok() { echo -e "${GREEN}[OK]${RESET} $1"; }
+log_warn() { echo -e "${YELLOW}[WARNING]${RESET} $1"; }
+log_error() { echo -e "${RED}[ERROR]${RESET} $1" >&2; }
+die() { log_error "$1"; exit 1; }
 
 check_file_exists() {
     local file="$1"
-    
-    if ! [[ -f "$file" ]]; then
-        echo -e "$ERROR File '$file' does not exist."
+    if [[ ! -f "$file" ]]; then
+        log_error "File '$file' does not exist."
         return 1
     fi
-
     return 0
 }
 
-manage_config() {
-    local file="$1"
-    local key="$2"
-    local val="$3"
+get_config() {
+    local file="$1" key="$2"
+    local regex="^[[:space:]]*#?[[:space:]]*${key}([[:space:]]+.*)?$"
+    check_file_exists "$file" || return 0
+    grep -m 1 -E "$regex" "$file" || echo "Parameter '$key' not found."
+}
 
+set_config() {
+    local file="$1" key="$2" val="$3"
+    local regex="^[[:space:]]*#?[[:space:]]*${key}([[:space:]]+.*)?$"
+    
     check_file_exists "$file" || return 0
 
-    # Regex explicitly requires a space, tab, or end of line immediately after the key.
-    # This prevents false matches on descriptive text like "# PasswordAuthentication. Depending..."
-    local regex="^[[:space:]]*#?[[:space:]]*${key}([[:space:]]+.*)?$"
-
-    if [[ -z "$val" ]]; then
-        # -m 1 ensures only the first valid match is output
-        grep -m 1 -E "$regex" "$file" || echo "Parameter '$key' not found."
+    if grep -qE "$regex" "$file"; then
+        sudo sed -i -E "/${regex}/{s@.*@${key} ${val}@; :a; n; ba;}" "$file"
     else
-        if grep -qE "$regex" "$file"; then
-            # Replace only the first valid match and bypass the rest of the file.
-            # Using '@' as the sed delimiter safely allows forward slashes ('/') in $val.
-            sudo sed -i -E "/${regex}/{s@.*@${key} ${val}@; :a; n; ba;}" "$file"
-        else
-            echo "${key} ${val}" | sudo tee -a "$file" > /dev/null
-        fi
-        echo -e "$OK Set: ${key} ${val}"
+        echo "${key} ${val}" | sudo tee -a "$file" > /dev/null
     fi
+    log_ok "Set: ${key} ${val}"
 }
 
 install_or_update() {
-    # sudo apt-get update -qq > /dev/null 2>&1
     for pkg in "$@"; do
         if dpkg -s "$pkg" >/dev/null 2>&1; then
-            echo -e "$INFO $pkg already installed. Checking updates..."
+            log_info "$pkg already installed. Checking updates..."
             sudo apt-get install --only-upgrade -y "$pkg" > /dev/null 2>&1
         else
-            echo -e "$WARNING $pkg not found. Installing..."
+            log_warn "$pkg not found. Installing..."
             sudo apt-get install -y "$pkg" > /dev/null 2>&1
         fi
     done
 }
 
+# --- Основные функции ---
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --username) USERNAME="$2"; shift 2 ;;
+            --userpassword) PASSWORD="$2"; shift 2 ;;
+            --sshport) SSHPORT="$2"; shift 2 ;;
+            --ssh-publickey) SSH_PUBLIC_KEY="$2"; shift 2 ;;
+            --skip-update) SKIPUPDATE=true; shift ;;
+            --restore-sshd-config) RESTORE_SSHD_CONFIG=true; shift ;;
+            --skip-ssh-key-setup) SKIP_SSH_KEY_SETUP=true; shift ;;
+            --skip-fail2ban-setup) SKIP_FAIL2BAN_SETUP=true; shift ;;
+            --allow-root-login) ALLOW_ROOT_LOGIN=true; shift ;;
+            *) die "An unknown parameter was passed: $1\nInstallation cancelled." ;;
+        esac
+    done
+}
+
 update_system() {
-
-	# Check if update is skipping
-	if [ "$SKIPUPDATE" = true ]; then
-		echo -e "$WARNING Skipped system update because of $SKIPUPDATE parameter --skip-update"
-		return 0
-	fi
-	
-    # Отключаем интерактивные запросы для полной автоматизации
+    if [[ "$SKIPUPDATE" == true ]]; then
+        log_warn "Skipped system update because of --skip-update"
+        return 0
+    fi
+    
     export DEBIAN_FRONTEND=noninteractive
-
-    # Обновляем кэш и пакеты (-yqq для максимальной тишины и авто-согласия)
-    apt-get update
-    apt-get upgrade -y
-
-	# Update the System
-	# sudo apt update
-	# sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
-	clear
-	echo -e "$OK System updated"
-
-}	
+    sudo apt-get update -yqq
+    sudo apt-get upgrade -yqq
+    
+    clear
+    log_ok "System updated"
+}   
 
 apps_install() {
-    
-    # Check if update is skipping
-	if [ "$SKIPUPDATE" = true ]; then
-		echo -e "$WARNING Skipped apps installation because of $SKIPUPDATE parameter --skip-update"
-		return 0
-	fi
-
-    # Install apps
+    if [[ "$SKIPUPDATE" == true ]]; then
+        log_warn "Skipped apps installation because of --skip-update"
+        return 0
+    fi
     install_or_update ufw fail2ban
-
-    echo -e "$OK Apps were sucsessfully installed"
-
+    log_ok "Apps were successfully installed"
 }
 
 create_user() {
-
-    # Check if there are user's prvided paramets
-    if [ -z "$USERNAME" ]; then
-        echo -e "$WARNING Username pareametr was not provided. Skip sudo user creation"
+    if [[ -z "$USERNAME" ]]; then
+        log_warn "Username parameter was not provided. Skip sudo user creation"
         return 0
     fi
 
-	# Check if user already exist
-	if id "$USERNAME" &>/dev/null; then
-
-        # Check if user has an admin privileges
-        if id -nG "admin" | grep -qw "sudo"; then
-            echo -e "$INFO User $USERNAME already exists with right privileges, skipping."
+    if id "$USERNAME" &>/dev/null; then
+        if id -nG "$USERNAME" | grep -qw "sudo"; then
+            log_info "User $USERNAME already exists with right privileges, skipping."
             return 0
         fi
-
-		sudo usermod -aG sudo "$USERNAME"
-	fi
-	
-	# Create a user with password and sudo
-    # Checks if user group alreaady exist
+        sudo usermod -aG sudo "$USERNAME"
+    fi
+    
     if getent group "$USERNAME" > /dev/null; then
         sudo useradd -m -s /bin/bash -g "$USERNAME" "$USERNAME"
     else
         sudo useradd -m -s /bin/bash "$USERNAME"
     fi
 
-	echo "$USERNAME:$PASSWORD" | sudo chpasswd
-	sudo usermod -aG sudo "$USERNAME"
-	echo -e "$OK User $USERNAME was successfully created with sudo."
-	
+    echo "$USERNAME:$PASSWORD" | sudo chpasswd
+    sudo usermod -aG sudo "$USERNAME"
+    log_ok "User $USERNAME was successfully created with sudo."
 }
 
 setup_authorized_keys() {
-
-	local user="$USERNAME"
+    local user="$USERNAME"
     local ssh_dir="/home/$user/.ssh"
     local auth_keys="$ssh_dir/authorized_keys"
 
-    # Checking arguments conflict --skip-ssh-key-setup and --ssh-publickey at the same time
-    if [ "$SKIP_SSH_KEY_SETUP" = true ] && \
-       [ ! -z "$SSH_PUBLIC_KEY" ]; then
-        echo -e "$ERROR You should not use --skip-ssh-key-setup and --ssh-publickey arguements at the same time"
-        return 0;
+    if [[ "$SKIP_SSH_KEY_SETUP" == true ]] && [[ -n "$SSH_PUBLIC_KEY" ]]; then
+        log_error "Conflicting arguments: --skip-ssh-key-setup and --ssh-publickey"
+        return 0
     fi
 
-	#Check if ssh-key setup is skipping
-	if [ "$SKIP_SSH_KEY_SETUP" = true ]; then
-		echo -e "$WARNING SSH-key setup was skipped."
-		return 0
-	fi
+    if [[ "$SKIP_SSH_KEY_SETUP" == true ]]; then
+        log_warn "SSH-key setup was skipped."
+        return 0
+    fi
 
-	#Check if authorized_keys file is already exist
-    if [[ -f "$auth_keys" ]] && \
-       [[ "$(stat -c %a "$auth_keys")" == "600" ]] && \
-       [[ "$(stat -c %a "$ssh_dir")" == "700" ]]; then
-		#sudo nano "$auth_keys"
-        echo -e "$OK Authorized_keys already exists for $USERNAME with correct permissions."
+    if [[ -f "$auth_keys" && "$(stat -c %a "$auth_keys")" == "600" && "$(stat -c %a "$ssh_dir")" == "700" ]]; then
+        log_ok "Authorized_keys already exists for $USERNAME with correct permissions."
     else
-        #Creating an authorized_keys file
-	    sudo mkdir -p "$ssh_dir"
-	    sudo touch "$auth_keys"
+        sudo mkdir -p "$ssh_dir"
+        sudo touch "$auth_keys"
         sudo chmod 700 "$ssh_dir"
         sudo chmod 600 "$auth_keys"
         sudo chown -R "$user:$user" "$ssh_dir"
     fi
 
-    # if auth_keys file isn't empty and user provides ssh-key argument -
-    # resolving manualy thourght nano or compare ssh keys automatically
-    if [[ -s "$auth_keys" ]] && \
-       [[ ! -z "$SSH_PUBLIC_KEY" ]]; then
-
-        # if that ssh is already in auth_keys file
+    if [[ -s "$auth_keys" && -n "$SSH_PUBLIC_KEY" ]]; then
+        local file_key
         file_key=$(< "$auth_keys" xargs)
         if [[ "$file_key" == "$SSH_PUBLIC_KEY" ]]; then
-            echo -e "$OK Your ssh key is already in $auth_keys"
+            log_ok "Your ssh key is already in $auth_keys"
             return 0
         fi
-
         sudo nano "$auth_keys"
     fi
 
-    # Checks if there are any ssh-key look like string
     if grep -qE '^[[:space:]]*(ssh-|ecdsa-|sk-|rsa-)' "$auth_keys"; then
-        echo -e "$OK Your ssh key is already in $auth_keys"
+        log_ok "Your ssh key is already in $auth_keys"
         return 0
     fi
 
-    # if auth_keys file is empty fill ssh key automatic or manually
     if [[ ! -s "$auth_keys" ]]; then
-        if [ ! -z "$SSH_PUBLIC_KEY" ]; then
-		    echo "$SSH_PUBLIC_KEY" >> "$auth_keys"
-	    else
-            echo "# You haven't provided a ssh key throught arguemtns. You can paste ssh key below" >> "$auth_keys"
-            sudo nano "$auth_keys"
-	    fi
-    fi
-
-	echo -e "$OK Authorized_keys was successfully created for $USERNAME with correct permissions."
-	
-}
-
-change_default_ssh_port() {
-
-	local sshd_cfg_backup="sshd_config_backup"
-	local sshd_cfg="sshd_config"
-	local ssh_path="/etc/ssh/"
-
-    # Resotre sshd_config file if it doesn't exist. But sshd_config_backup exists
-    if [[ ! -f "$ssh_path$sshd_cfg" ]] && [[ -f "$ssh_path$sshd_cfg_backup" ]]; then
-        echo -e "$WARNING File $sshd_cfg does not exist. Restoring from backup..."
-        cp -p "$ssh_path$sshd_cfg_backup" "$ssh_path$sshd_cfg"
-    fi
-
-    # Check if ssh-port arg was lived untouchable - do not change sshd_config
-    if [[ -z "$SSHPORT" ]]; then 
-        echo -e "$WARNING Custom ssh port configuration was skipped. You haven't provide arguments"
-        return 0
-    fi
-	
-    # Check if SSHPORT contains a valid value
-    if ! [[ "$SSHPORT" =~ ^[0-9]+$ ]] || (( SSHPORT <= 0 || SSHPORT > 65535 )); then
-        echo -e "$ERROR Provided port number: $SSHPORT is not allowed. Skiping ssh port edit..."
-        return
-    fi
-
-	# Check is there are any backup version of sshd_config
-	if [ -e "$ssh_path$sshd_cfg_backup" ]; then
-		echo -e "$OK A backup copy of sshd_config is already exists with name: $ssh_path$sshd_cfg_backup"
-	else
-        cp -p "$ssh_path$sshd_cfg" "$ssh_path$sshd_cfg_backup"
-		#cp -p /etc/ssh/sshd_config /etc/ssh/sshd_config_backup
-		echo -e "$OK A backup copy of sshd_config was made with name: $ssh_path$sshd_cfg_backup"
-	fi
-
-    # Restore sshd_config file from backup if flag --restore-sshd-config
-    if [ "$RESTORE_SSHD_CONFIG" == true ]; then
-        if [ -e "$ssh_path$sshd_cfg_backup" ]; then
-            echo -e "$WARNING Restoring $sshd_cfg file..."
-            rm -rf "$ssh_path$sshd_cfg"
-            cp -p "$ssh_path$sshd_cfg_backup" "$ssh_path$sshd_cfg"
+        if [[ -n "$SSH_PUBLIC_KEY" ]]; then
+            echo "$SSH_PUBLIC_KEY" | sudo tee -a "$auth_keys" > /dev/null
         else
-            echo -e "$ERROR There is no $sshd_cfg_backup file."
+            echo "# You haven't provided an ssh key. Paste it below:" | sudo tee -a "$auth_keys" > /dev/null
+            sudo nano "$auth_keys"
         fi
     fi
 
-    # Check if user provides default 22 port for OpenSSH
-    if [[ $SSHPORT == 22 ]]; then
-        echo -e "$WARNING Custom ssh port configuration was skipped. You provided default $SSHPORT port in arguments"
+    log_ok "Authorized_keys configured for $USERNAME."
+}
+
+change_default_ssh_port() {
+    local ssh_path="/etc/ssh/"
+    local sshd_cfg="${ssh_path}sshd_config"
+    local sshd_cfg_backup="${ssh_path}sshd_config_backup"
+
+    if [[ ! -f "$sshd_cfg" && -f "$sshd_cfg_backup" ]]; then
+        log_warn "File sshd_config does not exist. Restoring from backup..."
+        sudo cp -p "$sshd_cfg_backup" "$sshd_cfg"
+    fi
+
+    if [[ -z "$SSHPORT" ]]; then 
+        log_warn "Custom ssh port config skipped (no port provided)."
+        return 0
+    fi
+    
+    if ! [[ "$SSHPORT" =~ ^[0-9]+$ ]] || (( SSHPORT <= 0 || SSHPORT > 65535 )); then
+        log_error "Port $SSHPORT is not allowed. Skipping..."
         return 0
     fi
 
-	# Change default OpenSSH port to custom
-    manage_config "$sshd_config_path" "Port" "$SSHPORT"
+    if [[ -e "$sshd_cfg_backup" ]]; then
+        log_ok "Backup $sshd_cfg_backup already exists."
+    else
+        sudo cp -p "$sshd_cfg" "$sshd_cfg_backup"
+        log_ok "Backup created: $sshd_cfg_backup"
+    fi
+
+    if [[ "$RESTORE_SSHD_CONFIG" == true ]]; then
+        if [[ -e "$sshd_cfg_backup" ]]; then
+            log_warn "Restoring sshd_config file..."
+            sudo cp -p "$sshd_cfg_backup" "$sshd_cfg"
+        else
+            log_error "No backup file found."
+        fi
+    fi
+
+    if [[ "$SSHPORT" == "22" ]]; then
+        log_warn "Custom ssh port config skipped (default 22 provided)."
+        return 0
+    fi
+
+    set_config "$SSHD_CONFIG_PATH" "Port" "$SSHPORT"
 }
 
 sshd_config_configuration(){
-
-    # Hardening configurations
     change_default_ssh_port
-    manage_config "$sshd_config_path" "PasswordAuthentication" "no"
-    manage_config "$sshd_config_path" "PubkeyAuthentication" "yes"
-    manage_config "/etc/ssh/sshd_config.d/50-cloud-init.conf" "PasswordAuthentication" "no"
 
-    if [ "$ALLOW_ROOT_LOGIN" == true ]; then
-        manage_config "$sshd_config_path" "PermitRootLogin" "yes"
+    set_config "$SSHD_CONFIG_PATH" "PasswordAuthentication" "no"
+    set_config "$SSHD_CONFIG_PATH" "PubkeyAuthentication" "yes"
+    set_config "$SSHD_CLOUD_INIT_PATH" "PasswordAuthentication" "no"
+
+    if [[ "$ALLOW_ROOT_LOGIN" == true ]]; then
+        set_config "$SSHD_CONFIG_PATH" "PermitRootLogin" "yes"
     fi
 
-    manage_config "$sshd_config_path" "PermitEmptyPasswords" "no"
-    manage_config "$sshd_config_path" "X11Forwarding" "no"
+    set_config "$SSHD_CONFIG_PATH" "PermitEmptyPasswords" "no"
+    set_config "$SSHD_CONFIG_PATH" "X11Forwarding" "no"
 
-    if ! [ -z "$USERNAME" ]; then
-        manage_config "$sshd_config_path" "AllowUsers" "$USERNAME"
+    if [[ -n "$USERNAME" ]]; then
+        set_config "$SSHD_CONFIG_PATH" "AllowUsers" "$USERNAME"
     fi
 
-    # manage_config "$sshd_config_path" "MaxAuthTries" "3"
-    # manage_config "$sshd_config_path" "LoginGraceTime" "30"
-
-    echo -e "$OK $sshd_config_path configured"
-
+    log_ok "$SSHD_CONFIG_PATH configured"
 }
 
 applying_sshd_config() {
-
-    #Reload daemon to activate new SSH port and other parametrs
-	sudo sshd -t
-	sudo systemctl daemon-reload && sudo systemctl restart ssh
-	echo -e "$OK sshd_config file was validated and applied"
-
+    sudo sshd -t
+    sudo systemctl daemon-reload && sudo systemctl restart ssh
+    log_ok "sshd_config file was validated and applied"
 }
 
 ufw_config_configuration() {
+    check_file_exists "$UFW_RULES_FILE" || return 0
 
-    check_file_exists "$UFW_RULES_FILE" || exit 0
+    sudo ufw --force reset > /dev/null 2>&1
 
-	#Reset ufw setting before setting up
-	sudo ufw --force reset > /dev/null 2>&1
+    local icmp_types=("destination-unreachable" "time-exceeded" "parameter-problem" "echo-request")
+    for type in "${icmp_types[@]}"; do
+        sudo sed -i "s/-A ufw-before-input -p icmp --icmp-type $type -j ACCEPT/-A ufw-before-input -p icmp --icmp-type $type -j DROP/" "$UFW_RULES_FILE"
+        sudo sed -i "s/-A ufw-before-forward -p icmp --icmp-type $type -j ACCEPT/-A ufw-before-forward -p icmp --icmp-type $type -j DROP/" "$UFW_RULES_FILE"
+    done
 
-	# Change ACCEPT to DROP in icmp code for INPUT
-	sed -i 's/-A ufw-before-input -p icmp --icmp-type destination-unreachable -j ACCEPT/-A ufw-before-input -p icmp --icmp-type destination-unreachable -j DROP/' "$UFW_RULES_FILE"
-	sed -i 's/-A ufw-before-input -p icmp --icmp-type time-exceeded -j ACCEPT/-A ufw-before-input -p icmp --icmp-type time-exceeded -j DROP/' "$UFW_RULES_FILE"
-	sed -i 's/-A ufw-before-input -p icmp --icmp-type parameter-problem -j ACCEPT/-A ufw-before-input -p icmp --icmp-type parameter-problem -j DROP/' "$UFW_RULES_FILE"
-	sed -i 's/-A ufw-before-input -p icmp --icmp-type echo-request -j ACCEPT/-A ufw-before-input -p icmp --icmp-type echo-request -j DROP/' "$UFW_RULES_FILE"
+    sudo sed -i '/-A ufw-before-input -p icmp --icmp-type echo-request -j DROP/a -A ufw-before-input -p icmp --icmp-type source-quench -j DROP' "$UFW_RULES_FILE"
 
-	#Append a new string to rules
-	sed -i '/-A ufw-before-input -p icmp --icmp-type echo-request -j DROP/a -A ufw-before-input -p icmp --icmp-type source-quench -j DROP' "$UFW_RULES_FILE"
+    log_ok "Server ping was disabled"
 
-	# Change ACCEPT to DROP in icmp code for FORWARD
-	sed -i 's/-A ufw-before-forward -p icmp --icmp-type destination-unreachable -j ACCEPT/-A ufw-before-forward -p icmp --icmp-type destination-unreachable -j DROP/' "$UFW_RULES_FILE"
-	sed -i 's/-A ufw-before-forward -p icmp --icmp-type time-exceeded -j ACCEPT/-A ufw-before-forward -p icmp --icmp-type time-exceeded -j DROP/' "$UFW_RULES_FILE"
-	sed -i 's/-A ufw-before-forward -p icmp --icmp-type parameter-problem -j ACCEPT/-A ufw-before-forward -p icmp --icmp-type parameter-problem -j DROP/' "$UFW_RULES_FILE"
-	sed -i 's/-A ufw-before-forward -p icmp --icmp-type echo-request -j ACCEPT/-A ufw-before-forward -p icmp --icmp-type echo-request -j DROP/' "$UFW_RULES_FILE"
+    sudo ufw default deny incoming > /dev/null 2>&1
+    sudo ufw default allow outgoing > /dev/null 2>&1
+    sudo ufw allow http > /dev/null 2>&1
+    sudo ufw allow https > /dev/null 2>&1
 
-	echo -e "$OK Server ping was disabled"
-
-    #Setting up an ufw
-	sudo ufw default deny incoming > /dev/null 2>&1
-	sudo ufw default allow outgoing > /dev/null 2>&1
-
-	sudo ufw allow http > /dev/null 2>&1
-	sudo ufw allow https > /dev/null 2>&1
-
-    if [[ -z "$SSHPORT" ]] || [[ "$SSHPORT" == "22" ]]; then
+    if [[ -z "$SSHPORT" || "$SSHPORT" == "22" ]]; then
         sudo ufw allow OpenSSH > /dev/null 2>&1
     else
-        # Read the current Port value from sshd_config into a variable using our manage_config function
-        current_ssh_port=$(manage_config "/etc/ssh/sshd_config" "Port")
-
-        # Extract just the numeric value (ignoring the parameter name if present)
-        current_ssh_port=$(echo "$current_ssh_port" | awk '{print $NF}')
-
-        #echo "Current SSH Port: $current_ssh_port"
+        local current_ssh_port
+        current_ssh_port=$(get_config "$SSHD_CONFIG_PATH" "Port" | awk '{print $NF}')
         sudo ufw allow "$current_ssh_port" > /dev/null 2>&1
     fi 
 
-	sudo ufw --force enable > /dev/null 2>&1
-	echo -e "$OK UFW was configured and enabled"
-
+    sudo ufw --force enable > /dev/null 2>&1
+    log_ok "UFW was configured and enabled"
 }
 
 fail2ban_config_configuration() {
+    local f2b_localconf_path="/etc/fail2ban/jail.local"
+
+    if [[ "$SKIP_FAIL2BAN_SETUP" == true ]]; then
+        log_warn "Fail2ban setup was skipped."
+        return 0
+    fi
     
-	local f2b_conf_path="/etc/fail2ban/jail.conf"
-	local f2b_localconf_path="/etc/fail2ban/jail.local"
-
-	if [ "$SKIP_FAIL2BAN_SETUP" = true ]; then
-		echo -e "$WARNING Fail2ban setup was skipped by flag --skip-fail2ban-setup"
-		return 0
-	fi
-
-    # Check if fail2ban is already configured
-	# if [ -e $f2b_conf_path ]; then
-	# 	if [ -e $f2b_localconf_path ]; then
-	# 		echo -e "$WARNING File $f2b_localconf_path is already exist."
-	# 	fi
-	# else
-	# 	echo -e "$ERROR No config file $f2b_conf_path. Abort installation."
-	# 	exit 1
-	# fi
-	
-	# Make a local conf file
-	sudo touch $f2b_localconf_path
-	
-	# Writing custom configuration of fail2ban
-    printf '%s\n' '[sshd]' 'enabled = true' 'maxretry = 3' 'findtime = 10m' 'bantime = 3h' > /etc/fail2ban/jail.local
-	
-	sudo systemctl enable --now fail2ban > /dev/null 2>&1
-	sudo systemctl restart fail2ban > /dev/null 2>&1
-	
-	echo -e "$OK Fail2ban was configured and enabled (custom configuration file is $f2b_localconf_path)"
+    printf '%s\n' '[sshd]' 'enabled = true' 'maxretry = 3' 'findtime = 10m' 'bantime = 3h' | sudo tee "$f2b_localconf_path" > /dev/null
+    
+    sudo systemctl enable --now fail2ban > /dev/null 2>&1
+    sudo systemctl restart fail2ban > /dev/null 2>&1
+    
+    log_ok "Fail2ban configured and enabled"
 }
 
-main(){
-
+main() {
+    parse_args "$@"
+    
     update_system
     apps_install
-
     create_user
     setup_authorized_keys
+    
     sshd_config_configuration
-
     applying_sshd_config
-
+    
     ufw_config_configuration
     fail2ban_config_configuration
-
 }
 
-main
+main "$@"
