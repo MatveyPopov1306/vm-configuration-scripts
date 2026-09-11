@@ -16,7 +16,7 @@
             "--userpassword", "admin",
             // "--skip-fail2ban-setup",
             // "--skip-ssh-key-setup",
-            "--ssh-publickey", "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIAoLY96yKHQFWdbhnfyGNkKJv17fLfSrjjdt8j8ydxp matvey@HOME"
+            "--ssh-publickey", ""
             ],
             "terminalKind": "integrated",
             //"preLaunchTask": "Clear Terminal"
