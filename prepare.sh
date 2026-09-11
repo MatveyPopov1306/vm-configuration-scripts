@@ -32,7 +32,7 @@ RESTORE_SSHD_CONFIG=false
 UFW_RULES_FILE="/etc/ufw/before.rules"
 sshd_config_path="/etc/ssh/sshd_config"
 
-# Parsing cycle
+# Parsing cyclemain
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --username)
@@ -188,7 +188,13 @@ create_user() {
 	fi
 	
 	# Create a user with password and sudo
-	sudo useradd -m -s /bin/bash "$USERNAME"
+    # Checks if user group alreaady exist
+    if getent group "$USERNAME" > /dev/null; then
+        sudo useradd -m -s /bin/bash -g "$USERNAME" "$USERNAME"
+    else
+        sudo useradd -m -s /bin/bash "$USERNAME"
+    fi
+
 	echo "$USERNAME:$PASSWORD" | sudo chpasswd
 	sudo usermod -aG sudo "$USERNAME"
 	echo -e "$OK User $USERNAME was successfully created with sudo."
@@ -323,10 +329,11 @@ sshd_config_configuration(){
     # Hardening configurations
     change_default_ssh_port
     manage_config "$sshd_config_path" "PasswordAuthentication" "no"
+    manage_config "$sshd_config_path" "PubkeyAuthentication" "yes"
     manage_config "/etc/ssh/sshd_config.d/50-cloud-init.conf" "PasswordAuthentication" "no"
 
     if [ "$ALLOW_ROOT_LOGIN" == true ]; then
-        manage_config "$sshd_config_path" "PermitRootLogin" "no"
+        manage_config "$sshd_config_path" "PermitRootLogin" "yes"
     fi
 
     manage_config "$sshd_config_path" "PermitEmptyPasswords" "no"
@@ -415,14 +422,14 @@ fail2ban_config_configuration() {
 	fi
 
     # Check if fail2ban is already configured
-	if [ -e $f2b_conf_path ]; then
-		if [ -e $f2b_localconf_path ]; then
-			echo -e "$WARNING File $f2b_localconf_path is already exist."
-		fi
-	else
-		echo -e "$ERROR No config file $f2b_conf_path. Abort installation."
-		exit 1
-	fi
+	# if [ -e $f2b_conf_path ]; then
+	# 	if [ -e $f2b_localconf_path ]; then
+	# 		echo -e "$WARNING File $f2b_localconf_path is already exist."
+	# 	fi
+	# else
+	# 	echo -e "$ERROR No config file $f2b_conf_path. Abort installation."
+	# 	exit 1
+	# fi
 	
 	# Make a local conf file
 	sudo touch $f2b_localconf_path
