@@ -1,11 +1,35 @@
 # 🛠 Ubuntu Server Auto-Config
 
-Скрипт для автоматизированной первоначальной настройки и защиты свежего сервера на базе Ubuntu. Позволяет быстро создать пользователя, настроить SSH, добавить ключи и базовые элементы безопасности.
+Автоматизированный скрипт для базовой настройки и защиты свежеустановленного сервера на базе Ubuntu. Позволяет быстро создать пользователя, настроить SSH, добавить публичные ключи и применить базовые политики безопасности.
 
 ## 🚀 Быстрый старт
 
-Базовый запуск скрипта:
+Для запуска скрипта в интерактивном режиме (или с параметрами по умолчанию) выполните:
 
 ```bash
-bash <(curl -Ls [https://raw.githubusercontent.com/MatveyPopov1306/vm-configuration-scripts/main/prepare.sh](https://raw.githubusercontent.com/MatveyPopov1306/vm-configuration-scripts/main/prepare.sh))
+bash <(curl -Ls https://raw.githubusercontent.com/MatveyPopov1306/vm-configuration-scripts/main/prepare.sh)
+```
 
+## ⚙️ Доступные параметры
+
+Вы можете использовать флаги для полностью автоматической (non-interactive) настройки сервера:
+
+| Параметр | Описание |
+|---|---|
+| `--username` | Имя нового пользователя (будет автоматически добавлен в группу `sudo`). |
+| `--userpassword` | Пароль для создаваемого пользователя. |
+| `--sshport` | Кастомный порт для SSH-подключений (вместо стандартного 22). |
+| `--ssh-publickey` | Ваш публичный SSH-ключ для беспарольной авторизации. |
+| `--skip-update` | Пропустить обновление списка пакетов и системы (`apt update && apt upgrade`). |
+| `--restore-sshd-config` | Сбросить файл конфигурации SSH (`/etc/ssh/sshd_config`) к значениям по умолчанию перед применением новых. |
+| `--skip-ssh-key-setup` | Пропустить настройку авторизации по SSH-ключам. |
+| `--skip-fail2ban-setup` | Не устанавливать и не настраивать `fail2ban` (защита от брутфорс-атак). |
+| `--allow-root-login` | Разрешить авторизацию по SSH от имени пользователя `root` (по умолчанию отключается в целях безопасности). |
+
+## 💡 Пример использования
+
+Пример полного запуска одной командой с указанием пользователя, пароля, порта и SSH-ключа:
+
+```bash
+bash <(curl -Ls https://raw.githubusercontent.com/MatveyPopov1306/vm-configuration-scripts/main/prepare.sh) --username admin --userpassword 'admin' --sshport 22 --ssh-publickey 'ssh-ed25519-YOUR_SSH_KEY'
+```
