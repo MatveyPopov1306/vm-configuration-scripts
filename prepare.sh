@@ -117,14 +117,14 @@ manage_config() {
 }
 
 install_or_update() {
-    sudo apt-get update -qq > /dev/null 2>&1
+    # sudo apt-get update -qq > /dev/null 2>&1
     for pkg in "$@"; do
         if dpkg -s "$pkg" >/dev/null 2>&1; then
             echo -e "$INFO $pkg already installed. Checking updates..."
             sudo apt-get install --only-upgrade -y "$pkg" > /dev/null 2>&1
         else
             echo -e "$WARNING $pkg not found. Installing..."
-            sudo apt-get install -y "$pkg"
+            sudo apt-get install -y "$pkg" > /dev/null 2>&1
         fi
     done
 }
@@ -141,14 +141,14 @@ update_system() {
     export DEBIAN_FRONTEND=noninteractive
 
     # Обновляем кэш и пакеты (-yqq для максимальной тишины и авто-согласия)
-    apt-get update -qq
-    apt-get upgrade -yqq
+    apt-get update
+    apt-get upgrade -y
 
 	# Update the System
 	# sudo apt update
 	# sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
 	clear
-	echo -e "$OK System was sucsessfully updated"
+	echo -e "$OK System updated"
 
 }	
 
@@ -161,7 +161,7 @@ apps_install() {
 	fi
 
     # Install apps
-    install_or_update git curl wget ufw fail2ban
+    install_or_update ufw fail2ban
 
     echo -e "$OK Apps were sucsessfully installed"
 
@@ -322,8 +322,8 @@ sshd_config_configuration(){
 
     # Hardening configurations
     change_default_ssh_port
-    manage_config "$sshd_config_path" "PasswordAuthentication" "yes"
-    manage_config "/etc/ssh/sshd_config.d/50-cloud-init.conf" "PasswordAuthentication" "yes"
+    manage_config "$sshd_config_path" "PasswordAuthentication" "no"
+    manage_config "/etc/ssh/sshd_config.d/50-cloud-init.conf" "PasswordAuthentication" "no"
 
     if [ "$ALLOW_ROOT_LOGIN" == true ]; then
         manage_config "$sshd_config_path" "PermitRootLogin" "no"
@@ -336,10 +336,16 @@ sshd_config_configuration(){
         manage_config "$sshd_config_path" "AllowUsers" "$USERNAME"
     fi
 
-    manage_config "$sshd_config_path" "MaxAuthTries" "3"
-    manage_config "$sshd_config_path" "LoginGraceTime" "30"
+    # manage_config "$sshd_config_path" "MaxAuthTries" "3"
+    # manage_config "$sshd_config_path" "LoginGraceTime" "30"
 
-	#Reload daemon to activate new SSH port and other parametrs
+    echo -e "$OK $sshd_config_path configured"
+
+}
+
+applying_sshd_config() {
+
+    #Reload daemon to activate new SSH port and other parametrs
 	sudo sshd -t
 	sudo systemctl daemon-reload && sudo systemctl restart ssh
 	echo -e "$OK sshd_config file was validated and applied"
@@ -438,6 +444,9 @@ main(){
     create_user
     setup_authorized_keys
     sshd_config_configuration
+
+    # applying_sshd_config
+
     ufw_config_configuration
     fail2ban_config_configuration
 

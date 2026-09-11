@@ -4,19 +4,19 @@
         
         {
             "type": "bashdb",
-            "trace": true,
+            // "trace": true,
             "request": "launch",
             "name": "Bash-Debug (simplest configuration)",
             "program": "${file}",
             "args": [
-            "--skip-update",
+            // "--skip-update",
             // "--restore-sshd-config",
             // "--sshport", "10122",
-            // "--username", "admin", 
-            // "--userpassword", "admin",
+            "--username", "admin", 
+            "--userpassword", "admin",
             // "--skip-fail2ban-setup",
-            "--skip-ssh-key-setup",
-            // "--ssh-publickey", "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIAoLY96yKHQFWdbhnfyGNkKJv17fLfSrjjdt8j8ydxp matvey@HOME"
+            // "--skip-ssh-key-setup",
+            "--ssh-publickey", "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIAoLY96yKHQFWdbhnfyGNkKJv17fLfSrjjdt8j8ydxp matvey@HOME"
             ],
             "terminalKind": "integrated",
             //"preLaunchTask": "Clear Terminal"
