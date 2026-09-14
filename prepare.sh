@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
 
-clear
-
-# Clear console before all actions
 # Shortcuts of colors
 RED='\e[31m'
 GREEN='\e[32m'
@@ -464,6 +461,7 @@ main(){
     update_system
     apps_install
 
+    enable_bash_completion
     create_user
     setup_authorized_keys
     sshd_config_configuration
