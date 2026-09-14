@@ -16,9 +16,9 @@ OK="${GREEN}[OK]${RESET}"
 ERROR="${RED}[ERROR]${RESET}"
 WARNING="${YELLOW}[WARNING]${RESET}"
 
-USERNAME=""
+USER_NAME=""
 PASSWORD=''
-SSHPORT=""
+GLOBAL_SSH_PORT=""
 SSH_PUBLIC_KEY=""
 
 # installation flags
@@ -36,7 +36,7 @@ sshd_config_path="/etc/ssh/sshd_config"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --username)
-            USERNAME="$2"
+            USER_NAME="$2"
             shift 2
             ;;
         --userpassword)
@@ -44,7 +44,7 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         --sshport)
-            SSHPORT="$2"
+            GLOBAL_SSH_PORT="$2"
             shift 2
             ;;
         --ssh-publickey)
@@ -117,14 +117,15 @@ manage_config() {
 }
 
 install_or_update() {
-    # sudo apt-get update -qq > /dev/null 2>&1
+    sudo apt update -qq > /dev/null 2>&1
+
     for pkg in "$@"; do
         if dpkg -s "$pkg" >/dev/null 2>&1; then
             echo -e "$INFO $pkg already installed. Checking updates..."
-            sudo apt-get install --only-upgrade -y "$pkg" > /dev/null 2>&1
+            sudo apt install --only-upgrade -y "$pkg" > /dev/null 2>&1
         else
             echo -e "$WARNING $pkg not found. Installing..."
-            sudo apt-get install -y "$pkg" > /dev/null 2>&1
+            sudo apt install -y "$pkg" > /dev/null 2>&1
         fi
     done
 }
@@ -136,17 +137,10 @@ update_system() {
 		echo -e "$WARNING Skipped system update because of $SKIPUPDATE parameter --skip-update"
 		return 0
 	fi
-	
-    # Отключаем интерактивные запросы для полной автоматизации
-    export DEBIAN_FRONTEND=noninteractive
-
-    # Обновляем кэш и пакеты (-yqq для максимальной тишины и авто-согласия)
-    apt-get update
-    apt-get upgrade -y
 
 	# Update the System
-	# sudo apt update
-	# sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
+	sudo apt update
+	sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
 	clear
 	echo -e "$OK System updated"
 
@@ -170,40 +164,40 @@ apps_install() {
 create_user() {
 
     # Check if there are user's prvided paramets
-    if [ -z "$USERNAME" ]; then
+    if [ -z "$USER_NAME" ]; then
         echo -e "$WARNING Username pareametr was not provided. Skip sudo user creation"
         return 0
     fi
 
 	# Check if user already exist
-	if id "$USERNAME" &>/dev/null; then
+	if id "$USER_NAME" &>/dev/null; then
 
         # Check if user has an admin privileges
         if id -nG "admin" | grep -qw "sudo"; then
-            echo -e "$INFO User $USERNAME already exists with right privileges, skipping."
+            echo -e "$INFO User $USER_NAME already exists with right privileges, skipping."
             return 0
         fi
 
-		sudo usermod -aG sudo "$USERNAME"
+		sudo usermod -aG sudo "$USER_NAME"
 	fi
 	
 	# Create a user with password and sudo
     # Checks if user group alreaady exist
-    if getent group "$USERNAME" > /dev/null; then
-        sudo useradd -m -s /bin/bash -g "$USERNAME" "$USERNAME"
+    if getent group "$USER_NAME" > /dev/null; then
+        sudo useradd -m -s /bin/bash -g "$USER_NAME" "$USER_NAME"
     else
-        sudo useradd -m -s /bin/bash "$USERNAME"
+        sudo useradd -m -s /bin/bash "$USER_NAME"
     fi
 
-	echo "$USERNAME:$PASSWORD" | sudo chpasswd
-	sudo usermod -aG sudo "$USERNAME"
-	echo -e "$OK User $USERNAME was successfully created with sudo."
+	echo "$USER_NAME:$PASSWORD" | sudo chpasswd
+	sudo usermod -aG sudo "$USER_NAME"
+	echo -e "$OK User $USER_NAME was successfully created with sudo."
 	
 }
 
 setup_authorized_keys() {
 
-	local user="$USERNAME"
+	local user="$USER_NAME"
     local ssh_dir="/home/$user/.ssh"
     local auth_keys="$ssh_dir/authorized_keys"
 
@@ -225,7 +219,7 @@ setup_authorized_keys() {
        [[ "$(stat -c %a "$auth_keys")" == "600" ]] && \
        [[ "$(stat -c %a "$ssh_dir")" == "700" ]]; then
 		#sudo nano "$auth_keys"
-        echo -e "$OK Authorized_keys already exists for $USERNAME with correct permissions."
+        echo -e "$OK Authorized_keys already exists for $USER_NAME with correct permissions."
     else
         #Creating an authorized_keys file
 	    sudo mkdir -p "$ssh_dir"
@@ -266,7 +260,7 @@ setup_authorized_keys() {
 	    fi
     fi
 
-	echo -e "$OK Authorized_keys was successfully created for $USERNAME with correct permissions."
+	echo -e "$OK Authorized_keys was successfully created for $USER_NAME with correct permissions."
 	
 }
 
@@ -283,14 +277,14 @@ change_default_ssh_port() {
     fi
 
     # Check if ssh-port arg was lived untouchable - do not change sshd_config
-    if [[ -z "$SSHPORT" ]]; then 
+    if [[ -z "$GLOBAL_SSH_PORT" ]]; then 
         echo -e "$WARNING Custom ssh port configuration was skipped. You haven't provide arguments"
         return 0
     fi
 	
-    # Check if SSHPORT contains a valid value
-    if ! [[ "$SSHPORT" =~ ^[0-9]+$ ]] || (( SSHPORT <= 0 || SSHPORT > 65535 )); then
-        echo -e "$ERROR Provided port number: $SSHPORT is not allowed. Skiping ssh port edit..."
+    # Check if GLOBAL_SSH_PORT contains a valid value
+    if ! [[ "$GLOBAL_SSH_PORT" =~ ^[0-9]+$ ]] || (( GLOBAL_SSH_PORT <= 0 || GLOBAL_SSH_PORT > 65535 )); then
+        echo -e "$ERROR Provided port number: $GLOBAL_SSH_PORT is not allowed. Skiping ssh port edit..."
         return
     fi
 
@@ -315,13 +309,13 @@ change_default_ssh_port() {
     fi
 
     # Check if user provides default 22 port for OpenSSH
-    if [[ $SSHPORT == 22 ]]; then
-        echo -e "$WARNING Custom ssh port configuration was skipped. You provided default $SSHPORT port in arguments"
+    if [[ $GLOBAL_SSH_PORT == 22 ]]; then
+        echo -e "$WARNING Custom ssh port configuration was skipped. You provided default $GLOBAL_SSH_PORT port in arguments"
         return 0
     fi
 
 	# Change default OpenSSH port to custom
-    manage_config "$sshd_config_path" "Port" "$SSHPORT"
+    manage_config "$sshd_config_path" "Port" "$GLOBAL_SSH_PORT"
 }
 
 sshd_config_configuration(){
@@ -339,8 +333,8 @@ sshd_config_configuration(){
     manage_config "$sshd_config_path" "PermitEmptyPasswords" "no"
     manage_config "$sshd_config_path" "X11Forwarding" "no"
 
-    if ! [ -z "$USERNAME" ]; then
-        manage_config "$sshd_config_path" "AllowUsers" "$USERNAME"
+    if ! [ -z "$USER_NAME" ]; then
+        manage_config "$sshd_config_path" "AllowUsers" "$USER_NAME"
     fi
 
     # manage_config "$sshd_config_path" "MaxAuthTries" "3"
@@ -390,7 +384,7 @@ ufw_config_configuration() {
 	sudo ufw allow http > /dev/null 2>&1
 	sudo ufw allow https > /dev/null 2>&1
 
-    if [[ -z "$SSHPORT" ]] || [[ "$SSHPORT" == "22" ]]; then
+    if [[ -z "$GLOBAL_SSH_PORT" ]] || [[ "$GLOBAL_SSH_PORT" == "22" ]]; then
         sudo ufw allow OpenSSH > /dev/null 2>&1
     else
         # Read the current Port value from sshd_config into a variable using our manage_config function
