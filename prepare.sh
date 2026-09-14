@@ -161,6 +161,31 @@ apps_install() {
 
 }
 
+enable_bash_completion() {
+    # 1. Проверка наличия пакета bash-completion и его установка
+    if ! dpkg -s bash-completion >/dev/null 2>&1; then
+        apt update -qq
+        apt install -y -qq bash-completion
+    fi
+
+    # 2. Проверка, включено ли автодополнение глобально
+    if grep -q "^if ! shopt -oq posix;" /etc/bash.bashrc; then
+        return 0
+    fi
+
+    # 3. Раскомментирование нужных строк в /etc/bash.bashrc
+    # В Ubuntu 24.04 блок начинается с 'if ! shopt -oq posix;' и заканчивается 'fi'
+    sed -i '/^#if ! shopt -oq posix;/,/^#fi/ s/^#//' /etc/bash.bashrc
+
+    # 4. Финальная проверка с выводом статуса
+    if grep -q "^if ! shopt -oq posix;" /etc/bash.bashrc; then
+        echo "Bash-completion was enabled."
+    else
+        echo -e "$WARNING Bash-completion was not started"
+        return 1
+    fi
+}
+
 create_user() {
 
     # Check if there are user's prvided paramets
