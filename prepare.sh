@@ -155,7 +155,7 @@ apps_install() {
 	fi
 
     # Install apps
-    install_or_update ufw fail2ban
+    install_or_update ufw fail2ban bash-completion
 
     echo -e "$OK Apps were sucsessfully installed"
 
@@ -404,7 +404,7 @@ ufw_config_configuration() {
 
 fail2ban_config_configuration() {
     
-	local f2b_conf_path="/etc/fail2ban/jail.conf"
+	# local f2b_conf_path="/etc/fail2ban/jail.conf"
 	local f2b_localconf_path="/etc/fail2ban/jail.local"
 
 	if [ "$SKIP_FAIL2BAN_SETUP" = true ]; then
