@@ -102,12 +102,6 @@ obtaining_certificate() {
     local serv_domain_name="$SERVER_DOMAIN"
     local user_email_address="$USER_EMAIL_ADDRESS"
 
-    # Verificate format of serv_domain_name "example.com, www.example.com and etc."
-    if [[ ! "$serv_domain_name" =~ ^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$ ]]; then
-        echo -e "$ERROR You submitted an invalid domain name. Abort"
-        return 1
-    fi
-
     # Check if certificates throught certbot already exist
     if certbot certificates 2>/dev/null | grep -q "Certificate Name"; then
         echo -e "$WARNING There are some sertificates. You might need to manually configurate them."
@@ -115,9 +109,24 @@ obtaining_certificate() {
         return 1
     fi
 
+    # Get domain name of the server by ip
+    if [[ -z "$serv_domain_name" ]]; then
+        # Auto-get domain name by ip, in not provided manually
+        local server_ip
+        server_ip=$(curl -s --connect-timeout 3 ifconfig.me || curl -s --connect-timeout 3 icanhazip.com)
+        serv_domain_name=$(curl -s "https://api.hackertarget.com/reverseiplookup/?q=$server_ip")
+        echo -e "$INFO Auto-resolved domain name of server: $serv_domain_name"
+    else
+        # Verificate format of serv_domain_name "example.com, www.example.com and etc."
+        if [[ ! "$serv_domain_name" =~ ^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$ ]]; then
+            echo -e "$ERROR You submitted an invalid domain name. Abort"
+            return 1
+        fi
+    fi
+
     # Validation if server ip actually attached to ip of that server
     if ! check_domain_ip "$serv_domain_name"; then
-        echo "$ERROR The domain does not point to this server's IP. You might forgot to attach domain name"
+        echo -e "$ERROR The domain does not point to this server's IP. You might forgot to attach domain name"
         return 1
     fi
 
@@ -151,7 +160,7 @@ obtaining_certificate() {
 main(){
 
     update_system
-    install_or_update certbot curl
+    install_or_update certbot
     obtaining_certificate
 
 }
