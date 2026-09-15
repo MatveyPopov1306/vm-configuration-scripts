@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+clear
+
 # Shortcuts of colors
 RED='\e[31m'
 GREEN='\e[32m'
@@ -159,28 +161,25 @@ apps_install() {
 }
 
 enable_bash_completion() {
-    # 1. Проверка наличия пакета bash-completion и его установка
+
+    # Install if missing bash-completion
     if ! dpkg -s bash-completion >/dev/null 2>&1; then
         apt update -qq
         apt install -y -qq bash-completion
     fi
 
-    # 2. Проверка, включено ли автодополнение глобально
+    # Checks if block of lines in /etc/bash.bashrc already uncomment
     if grep -q "^if ! shopt -oq posix;" /etc/bash.bashrc; then
         return 0
     fi
 
-    # 3. Раскомментирование нужных строк в /etc/bash.bashrc
-    # В Ubuntu 24.04 блок начинается с 'if ! shopt -oq posix;' и заканчивается 'fi'
+    # Uncomment block of lines in /etc/bash.bashrc
     sed -i '/^#if ! shopt -oq posix;/,/^#fi/ s/^#//' /etc/bash.bashrc
 
-    # 4. Финальная проверка с выводом статуса
-    if grep -q "^if ! shopt -oq posix;" /etc/bash.bashrc; then
-        echo "Bash-completion was enabled."
-    else
-        echo -e "$WARNING Bash-completion was not started"
-        return 1
-    fi
+    # # shellcheck source=/dev/null
+    # source "/usr/share/bash-completion/bash_completion"
+
+    return 0
 }
 
 create_user() {
@@ -471,6 +470,7 @@ main(){
     ufw_config_configuration
     fail2ban_config_configuration
 
+    exec bash
 }
 
 main
