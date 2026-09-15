@@ -89,6 +89,14 @@ check_domain_ip() {
     fi
 }
 
+show_certificates(){
+    # Shows registered certificates
+    echo ""
+    sudo certbot certificates
+    echo ""
+    return 0
+}
+
 obtaining_certificate() {
 
     local serv_domain_name="$SERVER_DOMAIN"
@@ -103,6 +111,7 @@ obtaining_certificate() {
     # Check if certificates throught certbot already exist
     if certbot certificates 2>/dev/null | grep -q "Certificate Name"; then
         echo -e "$WARNING There are some sertificates. You might need to manually configurate them."
+        show_certificates
         return 1
     fi
 
@@ -135,12 +144,7 @@ obtaining_certificate() {
 
     # Automatic issue certificates
     sudo certbot certonly --standalone --non-interactive --agree-tos --email "$user_email_address" -d "$serv_domain_name" 
-
-    # Shows registered certificates
-    echo ""
-    sudo certbot certificates
-    echo ""
-
+    show_certificates
     return 0
 }
 
