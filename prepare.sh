@@ -3,17 +3,17 @@
 clear
 
 # Shortcuts of colors
-RED='\e[31m'
-GREEN='\e[32m'
-YELLOW='\e[33m'
-BLUE='\e[34m'
-RESET='\e[0m'
+readonly RED='\e[31m'
+readonly GREEN='\e[32m'
+readonly YELLOW='\e[33m'
+readonly BLUE='\e[34m'
+readonly RESET='\e[0m'
 
 # Error codes for echo -e
-INFO="${BLUE}[INFO]${RESET}"
-OK="${GREEN}[OK]${RESET}"
-ERROR="${RED}[ERROR]${RESET}"
-WARNING="${YELLOW}[WARNING]${RESET}"
+readonly INFO="${BLUE}[INFO]${RESET}"
+readonly OK="${GREEN}[OK]${RESET}"
+readonly ERROR="${RED}[ERROR]${RESET}"
+readonly WARNING="${YELLOW}[WARNING]${RESET}"
 
 USER_NAME=""
 PASSWORD=''
