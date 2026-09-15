@@ -104,8 +104,20 @@ obtaining_certificate() {
 
     # Check if certificates throught certbot already exist
     if certbot certificates 2>/dev/null | grep -q "Certificate Name"; then
-        echo -e "$WARNING There are some sertificates. You might need to manually configurate them."
+        echo -e "$WARNING There are some sertificates. Renewving."
+        echo ""
+
+        if sudo ufw status | grep -qw "inactive"; then
+            sudo certbot renew --standalone
+            show_certificates
+            return 1
+        fi
+
+        sudo ufw allow 80/tcp > /dev/null 2>&1
+        sudo certbot renew --standalone
+        sudo ufw delete allow 80/tcp > /dev/null 2>&1
         show_certificates
+
         return 1
     fi
 
@@ -135,24 +147,17 @@ obtaining_certificate() {
 
         # Checks if port 80 is open on UFW
         if ! sudo ufw status | grep -Ew "(80/tcp|80|http)" | grep -qw "ALLOW"; then
-            sudo ufw allow 80/tcp
-            return 1
+            sudo ufw allow 80/tcp > /dev/null 2>&1
         fi
-
-        echo -e "$OK Port 80 is allowed in firewall."
-        return 1
-    fi
-
-    # Checks if port 80/tcp is listening
-    if ss -tln | awk '{print $4}' | grep -qE ':(80)$'; then
-        echo -e "$OK Port 80 is actively being listened on."
-    else
-        echo -e "$ERROR Port 80 is not being listened to by any service. You need manually check port configuration."
-        return 1
     fi
 
     # Automatic issue certificates
-    sudo certbot certonly --standalone --non-interactive --agree-tos --email "$user_email_address" -d "$serv_domain_name" 
+    sudo certbot certonly --standalone --non-interactive --agree-tos --email "$user_email_address" -d "$serv_domain_name"
+
+    if sudo ufw status | grep -qw "active"; then
+        sudo ufw delete allow 80/tcp > /dev/null 2>&1
+    fi
+
     show_certificates
     return 0
 }
